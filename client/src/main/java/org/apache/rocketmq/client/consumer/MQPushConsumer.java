@@ -22,7 +22,7 @@ import org.apache.rocketmq.client.consumer.listener.MessageListenerOrderly;
 import org.apache.rocketmq.client.exception.MQClientException;
 
 /**
- * Push consumer
+ * Push consumer  消费者主要API
  */
 public interface MQPushConsumer extends MQConsumer {
     /**
@@ -41,8 +41,16 @@ public interface MQPushConsumer extends MQConsumer {
     @Deprecated
     void registerMessageListener(MessageListener messageListener);
 
+    /**
+     * 注册并发消费事件监听器
+     * @param messageListener
+     */
     void registerMessageListener(final MessageListenerConcurrently messageListener);
 
+    /**
+     * 注册顺序消费事件监听器
+     * @param messageListener
+     */
     void registerMessageListener(final MessageListenerOrderly messageListener);
 
     /**
@@ -88,6 +96,7 @@ public interface MQPushConsumer extends MQConsumer {
 
     /**
      * Unsubscribe consumption some topic
+     * 取消订阅
      *
      * @param topic message topic
      */
@@ -99,11 +108,13 @@ public interface MQPushConsumer extends MQConsumer {
     void updateCorePoolSize(int corePoolSize);
 
     /**
+     * 暂停消费
      * Suspend the consumption
      */
     void suspend();
 
     /**
+     * 恢复消费
      * Resume the consumption
      */
     void resume();

@@ -69,6 +69,9 @@ import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * 服务端拉取消息处理类
+ */
 public class PullMessageProcessor extends AsyncNettyRequestProcessor implements NettyRequestProcessor {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -89,8 +92,17 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         return false;
     }
 
+    /**
+     * 拉取消息服务端从commitlog找到消息
+     * @param channel 网络通道,通过该通道向消息拉取客户端发送响应结果
+     * @param request 消息拉取请求
+     * @param brokerAllowSuspend broker端是否支持挂起
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand processRequest(final Channel channel, RemotingCommand request, boolean brokerAllowSuspend)
         throws RemotingCommandException {
+        //从request中获取header请求,并设置response基本属性
         RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
         final PullMessageResponseHeader responseHeader = (PullMessageResponseHeader) response.readCustomHeader();
         final PullMessageRequestHeader requestHeader =
@@ -99,13 +111,13 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         response.setOpaque(request.getOpaque());
 
         log.debug("receive PullMessage request command, {}", request);
-
+        //校验权限
         if (!PermName.isReadable(this.brokerController.getBrokerConfig().getBrokerPermission())) {
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark(String.format("the broker[%s] pulling message is forbidden", this.brokerController.getBrokerConfig().getBrokerIP1()));
             return response;
         }
-
+        //----------------根据订阅信息,构件消息过滤器 begin---------------
         SubscriptionGroupConfig subscriptionGroupConfig =
             this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(requestHeader.getConsumerGroup());
         if (null == subscriptionGroupConfig) {
@@ -153,6 +165,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         ConsumerFilterData consumerFilterData = null;
         if (hasSubscriptionFlag) {
             try {
+                //根据主题消息过滤表达式构件消息实体,如果不是tag模式构建consumerFilterData
                 subscriptionData = FilterAPI.build(
                     requestHeader.getTopic(), requestHeader.getSubscription(), requestHeader.getExpressionType()
                 );
@@ -226,7 +239,8 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             response.setRemark("The broker does not support consumer to filter message by " + subscriptionData.getExpressionType());
             return response;
         }
-
+        //-----------根据订阅信息,构件消息过滤器 end-----------
+        //构件消息过滤对象
         MessageFilter messageFilter;
         if (this.brokerController.getBrokerConfig().isFilterSupportRetry()) {
             messageFilter = new ExpressionForRetryMessageFilter(subscriptionData, consumerFilterData,
@@ -235,16 +249,18 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             messageFilter = new ExpressionMessageFilter(subscriptionData, consumerFilterData,
                 this.brokerController.getConsumerFilterManager());
         }
-
+        //调用MessageStore#getMessageStore方法查找消息
         final GetMessageResult getMessageResult =
             this.brokerController.getMessageStore().getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                 requestHeader.getQueueId(), requestHeader.getQueueOffset(), requestHeader.getMaxMsgNums(), messageFilter);
         if (getMessageResult != null) {
+            //根据getMessageResult填充响应消息信息
             response.setRemark(getMessageResult.getStatus().name());
             responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());
             responseHeader.setMinOffset(getMessageResult.getMinOffset());
             responseHeader.setMaxOffset(getMessageResult.getMaxOffset());
 
+            //根据主从同步延迟设置下一次拉取的BrokerId
             if (getMessageResult.isSuggestPullingFromSlave()) {
                 responseHeader.setSuggestWhichBrokerId(subscriptionGroupConfig.getWhichBrokerWhenConsumeSlowly());
             } else {
@@ -276,6 +292,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                 responseHeader.setSuggestWhichBrokerId(MixAll.MASTER_ID);
             }
 
+            //根据getMessageResult编码转化成关系
             switch (getMessageResult.getStatus()) {
                 case FOUND:
                     response.setCode(ResponseCode.SUCCESS);
@@ -326,6 +343,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                     break;
             }
 
+            //处理钩子函数
             if (this.hasConsumeMessageHook()) {
                 ConsumeMessageContext context = new ConsumeMessageContext();
                 context.setConsumerGroup(requestHeader.getConsumerGroup());
@@ -370,10 +388,10 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
 
             switch (response.getCode()) {
                 case ResponseCode.SUCCESS:
-
+                    //更新消费数量
                     this.brokerController.getBrokerStatsManager().incGroupGetNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                         getMessageResult.getMessageCount());
-
+                    //更新消费次数
                     this.brokerController.getBrokerStatsManager().incGroupGetSize(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                         getMessageResult.getBufferTotalSize());
 
@@ -407,9 +425,10 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                     }
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
-
+                    //消息未找到且支持挂起,默认支持挂起
                     if (brokerAllowSuspend && hasSuspendFlag) {
                         long pollingTimeMills = suspendTimeoutMillisLong;
+                        //判断是否支持长轮询,根据是否支持长轮询决定挂起模式,push默认15s,pull默认20s
                         if (!this.brokerController.getBrokerConfig().isLongPollingEnable()) {
                             pollingTimeMills = this.brokerController.getBrokerConfig().getShortPollingTimeMills();
                         }
@@ -466,6 +485,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         storeOffsetEnable = storeOffsetEnable
             && this.brokerController.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE;
         if (storeOffsetEnable) {
+            //如果为主节点更新消费进度
             this.brokerController.getConsumerOffsetManager().commitOffset(RemotingHelper.parseChannelRemoteAddr(channel),
                 requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId(), requestHeader.getCommitOffset());
         }
@@ -547,12 +567,19 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         }
     }
 
+    /**
+     * 处理请求并唤醒
+     * @param channel
+     * @param request
+     * @throws RemotingCommandException
+     */
     public void executeRequestWhenWakeup(final Channel channel,
         final RemotingCommand request) throws RemotingCommandException {
         Runnable run = new Runnable() {
             @Override
             public void run() {
                 try {
+                    //又到了长轮询的入口代码
                     final RemotingCommand response = PullMessageProcessor.this.processRequest(channel, request, false);
 
                     if (response != null) {
@@ -581,6 +608,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                 }
             }
         };
+        //调用线程池处理任务
         this.brokerController.getPullMessageExecutor().submit(new RequestTask(run, channel, request));
     }
 

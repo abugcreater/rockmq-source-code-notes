@@ -37,12 +37,17 @@ import org.apache.rocketmq.common.protocol.header.UpdateConsumerOffsetRequestHea
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
 /**
+ * 集群模式下消费进度存储
+ * 存储在broker端
  * Remote storage implementation
  */
 public class RemoteBrokerOffsetStore implements OffsetStore {
     private final static InternalLogger log = ClientLogger.getLog();
     private final MQClientInstance mQClientFactory;
     private final String groupName;
+    /**
+     * 每个消息队列对应的消费进度
+     */
     private ConcurrentMap<MessageQueue, AtomicLong> offsetTable =
         new ConcurrentHashMap<MessageQueue, AtomicLong>();
 
@@ -194,6 +199,7 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
     }
 
     /**
+     * 集群模式下将消费者的消费进度更新到broker端,broker端ConsumerOffsetManager处理
      * Update the Consumer Offset synchronously, once the Master is off, updated to Slave, here need to be optimized.
      */
     @Override
@@ -213,6 +219,7 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
             requestHeader.setCommitOffset(offset);
 
             if (isOneway) {
+                //不去解析返回结果
                 this.mQClientFactory.getMQClientAPIImpl().updateConsumerOffsetOneway(
                     findBrokerResult.getBrokerAddr(), requestHeader, 1000 * 5);
             } else {

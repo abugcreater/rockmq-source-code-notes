@@ -24,6 +24,10 @@ import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
 public interface ConsumeMessageService {
     void start();
 
+    /**
+     * 终止
+     * @param awaitTerminateMillis 等待多少ms后关闭
+     */
     void shutdown(long awaitTerminateMillis);
 
     void updateCorePoolSize(int corePoolSize);
@@ -34,8 +38,21 @@ public interface ConsumeMessageService {
 
     int getCorePoolSize();
 
+    /**
+     * 直接消费消息.主要用于通过管理命令收到消费消息
+     * @param msg  消息
+     * @param brokerName broker名称
+     * @return
+     */
     ConsumeMessageDirectlyResult consumeMessageDirectly(final MessageExt msg, final String brokerName);
 
+    /**
+     * 提交消息消费,使用线程池来消费消息
+     * @param msgs 消息列表,默认一次从服务器中最多拉32条
+     * @param processQueue 消息处理队列
+     * @param messageQueue 消息所属消费队列
+     * @param dispathToConsume 是否转发到消费线程池
+     */
     void submitConsumeRequest(
         final List<MessageExt> msgs,
         final ProcessQueue processQueue,

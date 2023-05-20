@@ -19,6 +19,9 @@ package org.apache.rocketmq.broker.longpolling;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 内部维护一个PullRequest列表,表示同一主题@队列累积的拉取消息任务
+ */
 public class ManyPullRequest {
     private final ArrayList<PullRequest> pullRequestList = new ArrayList<>();
 

@@ -517,6 +517,10 @@ public class BrokerConfig {
         this.filterServerNums = filterServerNums;
     }
 
+    /**
+     * 是否开启长轮询
+     * @return
+     */
     public boolean isLongPollingEnable() {
         return longPollingEnable;
     }

@@ -50,6 +50,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 事务消息桥
+ */
 public class TransactionalMessageBridge {
     private static final InternalLogger LOGGER = InnerLoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
 
@@ -201,11 +204,13 @@ public class TransactionalMessageBridge {
     }
 
     private MessageExtBrokerInner parseHalfMessageInner(MessageExtBrokerInner msgInner) {
+        //如果是事务消息,需要备份消息的原有主题和topic
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_TOPIC, msgInner.getTopic());
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
             String.valueOf(msgInner.getQueueId()));
         msgInner.setSysFlag(
             MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), MessageSysFlag.TRANSACTION_NOT_TYPE));
+        //设置topic为RMQ_SYS_TRANS_HALF_TOPIC
         msgInner.setTopic(TransactionalMessageUtil.buildHalfTopic());
         msgInner.setQueueId(0);
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));

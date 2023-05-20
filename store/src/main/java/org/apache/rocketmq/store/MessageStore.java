@@ -94,6 +94,9 @@ public interface MessageStore {
     /**
      * Query at most <code>maxMsgNums</code> messages belonging to <code>topic</code> at <code>queueId</code> starting
      * from given <code>offset</code>. Resulting messages will further be screened using provided message filter.
+     * 最多查询属于queueId起始处主题的maxMsgNums条消息
+     * 从给定的偏移量。生成的消息将使用提供的消息过滤器进行进一步筛选。
+     *
      *
      * @param group Consumer group that launches this query.
      * @param topic Topic to query.

@@ -27,11 +27,29 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class SubscriptionData implements Comparable<SubscriptionData> {
+    /**
+     * 过滤模式,默认为全匹配
+     */
     public final static String SUB_ALL = "*";
+    /**
+     * 是否类过滤模式,默认false
+     */
     private boolean classFilterMode = false;
+    /**
+     * 主题
+     */
     private String topic;
+    /**
+     * 表达式,多个用||隔开
+     */
     private String subString;
+    /**
+     * 切割完表达式后的tag标签
+     */
     private Set<String> tagsSet = new HashSet<String>();
+    /**
+     * tag标签的hashcode
+     */
     private Set<Integer> codeSet = new HashSet<Integer>();
     private long subVersion = System.currentTimeMillis();
     private String expressionType = ExpressionType.TAG;

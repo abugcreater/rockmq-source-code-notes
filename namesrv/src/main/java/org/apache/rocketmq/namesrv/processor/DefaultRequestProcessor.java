@@ -58,6 +58,9 @@ import org.apache.rocketmq.remoting.netty.AsyncNettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * 网络请求处理器
+ */
 public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implements NettyRequestProcessor {
     private static InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
 
@@ -89,7 +92,9 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
             case RequestCode.QUERY_DATA_VERSION:
                 return queryBrokerTopicConfig(ctx, request);
             case RequestCode.REGISTER_BROKER:
+                //心跳转发到
                 Version brokerVersion = MQVersion.value2Version(request.getVersion());
+                //两者区别在于注册时会获取 消息过滤服务器列表
                 if (brokerVersion.ordinal() >= MQVersion.Version.V3_0_11.ordinal()) {
                     return this.registerBrokerWithFilterServer(ctx, request);
                 } else {
@@ -281,7 +286,7 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
         final RegisterBrokerResponseHeader responseHeader = (RegisterBrokerResponseHeader) response.readCustomHeader();
         final RegisterBrokerRequestHeader requestHeader =
             (RegisterBrokerRequestHeader) request.decodeCommandCustomHeader(RegisterBrokerRequestHeader.class);
-
+        //循环冗余校验 校验数据正确性
         if (!checksum(ctx, request, requestHeader)) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("crc32 not match");
@@ -296,7 +301,7 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
             topicConfigWrapper.getDataVersion().setCounter(new AtomicLong(0));
             topicConfigWrapper.getDataVersion().setTimestamp(0);
         }
-
+        //由routeInfoManager处理心跳信息
         RegisterBrokerResult result = this.namesrvController.getRouteInfoManager().registerBroker(
             requestHeader.getClusterName(),
             requestHeader.getBrokerAddr(),
@@ -307,7 +312,7 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
             null,
             ctx.channel()
         );
-
+        //组装返回数据
         responseHeader.setHaServerAddr(result.getHaServerAddr());
         responseHeader.setMasterAddr(result.getMasterAddr());
 
@@ -335,6 +340,13 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
         return response;
     }
 
+    /**
+     * 路由发现,由客户端主动请求得到
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     public RemotingCommand getRouteInfoByTopic(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -342,9 +354,10 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
             (GetRouteInfoRequestHeader) request.decodeCommandCustomHeader(GetRouteInfoRequestHeader.class);
 
         TopicRouteData topicRouteData = this.namesrvController.getRouteInfoManager().pickupTopicRouteData(requestHeader.getTopic());
-
+        //如果找到对应的主题信息,且该主题为顺序消息
         if (topicRouteData != null) {
             if (this.namesrvController.getNamesrvConfig().isOrderMessageEnable()) {
+                //填充kv相关配置
                 String orderTopicConf =
                     this.namesrvController.getKvConfigManager().getKVConfig(NamesrvUtil.NAMESPACE_ORDER_TOPIC_CONFIG,
                         requestHeader.getTopic());

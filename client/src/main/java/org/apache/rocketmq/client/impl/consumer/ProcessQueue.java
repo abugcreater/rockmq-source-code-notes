@@ -16,6 +16,14 @@
  */
 package org.apache.rocketmq.client.impl.consumer;
 
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.client.log.ClientLogger;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.protocol.body.ProcessQueueInfo;
+import org.apache.rocketmq.logging.InternalLogger;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -27,36 +35,56 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
-import org.apache.rocketmq.client.log.ClientLogger;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.common.message.MessageAccessor;
-import org.apache.rocketmq.common.message.MessageConst;
-import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.common.protocol.body.ProcessQueueInfo;
-
 /**
  * Queue consumption snapshot
  */
 public class ProcessQueue {
     public final static long REBALANCE_LOCK_MAX_LIVE_TIME =
         Long.parseLong(System.getProperty("rocketmq.client.rebalance.lockMaxLiveTime", "30000"));
+    /**
+     * 重新负载锁定时间
+     */
     public final static long REBALANCE_LOCK_INTERVAL = Long.parseLong(System.getProperty("rocketmq.client.rebalance.lockInterval", "20000"));
+    /**
+     * 最大拉取空闲时间
+     */
     private final static long PULL_MAX_IDLE_TIME = Long.parseLong(System.getProperty("rocketmq.client.pull.pullMaxIdleTime", "120000"));
     private final InternalLogger log = ClientLogger.getLog();
     private final ReadWriteLock lockTreeMap = new ReentrantReadWriteLock();
+    /**
+     * 消息存储容器,键为消息在consumeQueue中的偏移量
+     */
     private final TreeMap<Long, MessageExt> msgTreeMap = new TreeMap<Long, MessageExt>();
+    /**
+     * 当前ProcessQueue中的消息总数
+     */
     private final AtomicLong msgCount = new AtomicLong();
+    /**
+     * 消息大小
+     */
     private final AtomicLong msgSize = new AtomicLong();
     private final Lock lockConsume = new ReentrantLock();
     /**
      * A subset of msgTreeMap, will only be used when orderly consume
+     * 消息临时存储容器,键为消息在consumeQueue中的偏移量,仅用于处理顺序消息
      */
     private final TreeMap<Long, MessageExt> consumingMsgOrderlyTreeMap = new TreeMap<Long, MessageExt>();
     private final AtomicLong tryUnlockTimes = new AtomicLong(0);
+    /**
+     * 当前ProcessQueue包含的最大队列偏移量
+     */
     private volatile long queueOffsetMax = 0L;
+    /**
+     * 当前ProcessQueue是否被丢弃
+     */
     private volatile boolean dropped = false;
+    /**
+     * 上一次消息拉取时间戳
+     */
     private volatile long lastPullTimestamp = System.currentTimeMillis();
+    /**
+     * 上一次消息消费时间戳
+     */
     private volatile long lastConsumeTimestamp = System.currentTimeMillis();
     private volatile boolean locked = false;
     private volatile long lastLockTimestamp = System.currentTimeMillis();
@@ -83,9 +111,11 @@ public class ProcessQueue {
         for (int i = 0; i < loop; i++) {
             MessageExt msg = null;
             try {
+                //读锁
                 this.lockTreeMap.readLock().lockInterruptibly();
                 try {
                     if (!msgTreeMap.isEmpty() && System.currentTimeMillis() - Long.parseLong(MessageAccessor.getConsumeStartTimeStamp(msgTreeMap.firstEntry().getValue())) > pushConsumer.getConsumeTimeout() * 60 * 1000) {
+                        //消息集合不为空,超过配置的消息消费超时时间
                         msg = msgTreeMap.firstEntry().getValue();
                     } else {
 
@@ -99,7 +129,7 @@ public class ProcessQueue {
             }
 
             try {
-
+                //将消息延迟级别延迟3个级别在消费
                 pushConsumer.sendMessageBack(msg, 3);
                 log.info("send expire msg back. topic={}, msgId={}, storeHost={}, queueId={}, queueOffset={}", msg.getTopic(), msg.getMsgId(), msg.getStoreHost(), msg.getQueueId(), msg.getQueueOffset());
                 try {
@@ -107,6 +137,7 @@ public class ProcessQueue {
                     try {
                         if (!msgTreeMap.isEmpty() && msg.getQueueOffset() == msgTreeMap.firstKey()) {
                             try {
+                                //消费失败的消息移到失败队列,并删除
                                 removeMessage(Collections.singletonList(msg));
                             } catch (Exception e) {
                                 log.error("send expired msg exception", e);
@@ -124,6 +155,11 @@ public class ProcessQueue {
         }
     }
 
+    /**
+     * 拉取消息后将消息存放到ProcessQueue
+     * @param msgs
+     * @return
+     */
     public boolean putMessage(final List<MessageExt> msgs) {
         boolean dispatchToConsume = false;
         try {
@@ -182,6 +218,11 @@ public class ProcessQueue {
         return 0;
     }
 
+    /**
+     * 更新消息存储容器及偏移量,消息大小属性
+     * @param msgs
+     * @return
+     */
     public long removeMessage(final List<MessageExt> msgs) {
         long result = -1;
         final long now = System.currentTimeMillis();
@@ -243,6 +284,9 @@ public class ProcessQueue {
         this.locked = locked;
     }
 
+    /**
+     * 将temp中的消息存放到msgTreeMap中并清除tmp
+     */
     public void rollback() {
         try {
             this.lockTreeMap.writeLock().lockInterruptibly();
@@ -257,6 +301,10 @@ public class ProcessQueue {
         }
     }
 
+    /**
+     * 消息消费完成后,更新消息数量,清空temp,返回最后消费偏移量
+     * @return
+     */
     public long commit() {
         try {
             this.lockTreeMap.writeLock().lockInterruptibly();
@@ -280,6 +328,10 @@ public class ProcessQueue {
         return -1;
     }
 
+    /**
+     * 重新消费该批消息
+     * @param msgs
+     */
     public void makeMessageToConsumeAgain(List<MessageExt> msgs) {
         try {
             this.lockTreeMap.writeLock().lockInterruptibly();
@@ -296,6 +348,11 @@ public class ProcessQueue {
         }
     }
 
+    /**
+     * 批量获取batchSize条消息,顺序消费时会将消息临时存储在consumingMsgOrderlyTreeMap中
+     * @param batchSize
+     * @return
+     */
     public List<MessageExt> takeMessages(final int batchSize) {
         List<MessageExt> result = new ArrayList<MessageExt>(batchSize);
         final long now = System.currentTimeMillis();

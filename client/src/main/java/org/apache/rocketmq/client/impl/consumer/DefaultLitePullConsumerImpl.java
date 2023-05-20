@@ -426,6 +426,12 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * 填充subscriptionInner
+     * @param topic
+     * @param subExpression
+     * @throws MQClientException
+     */
     public synchronized void subscribe(String topic, String subExpression) throws MQClientException {
         try {
             if (topic == null || topic.equals("")) {

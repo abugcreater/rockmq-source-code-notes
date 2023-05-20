@@ -55,6 +55,7 @@ public class NamesrvStartup {
 
         try {
             NamesrvController controller = createNamesrvController(args);
+            //启动
             start(controller);
             String tip = "The Name Server boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
             log.info(tip);
@@ -82,6 +83,7 @@ public class NamesrvStartup {
         final NamesrvConfig namesrvConfig = new NamesrvConfig();
         final NettyServerConfig nettyServerConfig = new NettyServerConfig();
         nettyServerConfig.setListenPort(9876);
+        //通过-c configFile 命令指定配置文件路径
         if (commandLine.hasOption('c')) {
             String file = commandLine.getOptionValue('c');
             if (file != null) {
@@ -104,7 +106,7 @@ public class NamesrvStartup {
             MixAll.printObjectProperties(console, nettyServerConfig);
             System.exit(0);
         }
-
+        //也可以通过 -- 属性名 名称 设置属性 如 --listenPort 9876
         MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), namesrvConfig);
 
         if (null == namesrvConfig.getRocketmqHome()) {
@@ -122,10 +124,11 @@ public class NamesrvStartup {
 
         MixAll.printObjectProperties(log, namesrvConfig);
         MixAll.printObjectProperties(log, nettyServerConfig);
-
+        //初始化NamesrvController
         final NamesrvController controller = new NamesrvController(namesrvConfig, nettyServerConfig);
 
         // remember all configs to prevent discard
+        //合并所有配置
         controller.getConfiguration().registerConfig(properties);
 
         return controller;
@@ -136,13 +139,13 @@ public class NamesrvStartup {
         if (null == controller) {
             throw new IllegalArgumentException("NamesrvController is null");
         }
-
+        //初始化namesrv核心控制器
         boolean initResult = controller.initialize();
         if (!initResult) {
             controller.shutdown();
             System.exit(-3);
         }
-
+        //注册钩子,当停机时进行后续处理
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, new Callable<Void>() {
             @Override
             public Void call() throws Exception {
@@ -150,7 +153,7 @@ public class NamesrvStartup {
                 return null;
             }
         }));
-
+        //启动核心控制器
         controller.start();
 
         return controller;

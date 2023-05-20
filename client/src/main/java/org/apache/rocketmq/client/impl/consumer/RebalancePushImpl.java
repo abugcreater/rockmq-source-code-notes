@@ -146,17 +146,19 @@ public class RebalancePushImpl extends RebalanceImpl {
             case CONSUME_FROM_LAST_OFFSET_AND_FROM_MIN_WHEN_BOOT_FIRST:
             case CONSUME_FROM_MIN_OFFSET:
             case CONSUME_FROM_MAX_OFFSET:
+                //从队列最新偏移量开始消费
             case CONSUME_FROM_LAST_OFFSET: {
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;
                 }
-                // First start,no offset
+                // First start,no offset(消息队列刚刚创建则为-1)
                 else if (-1 == lastOffset) {
                     if (mq.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                         result = 0L;
                     } else {
                         try {
+                            //获取队列最大偏移量
                             result = this.mQClientFactory.getMQAdminImpl().maxOffset(mq);
                         } catch (MQClientException e) {
                             result = -1;
@@ -167,24 +169,30 @@ public class RebalancePushImpl extends RebalanceImpl {
                 }
                 break;
             }
+            //从头开始消费
             case CONSUME_FROM_FIRST_OFFSET: {
+                //从磁盘中读取消息队列的消费进度
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;
                 } else if (-1 == lastOffset) {
                     result = 0L;
                 } else {
+                    //小于-1是错误的
                     result = -1;
                 }
                 break;
             }
+            //从消费者启动的时间戳对应的消费进度开始消费
             case CONSUME_FROM_TIMESTAMP: {
+                //从磁盘中读取消息队列的消费进度
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;
                 } else if (-1 == lastOffset) {
                     if (mq.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                         try {
+                            //如果是重试队列则从最新的开始
                             result = this.mQClientFactory.getMQAdminImpl().maxOffset(mq);
                         } catch (MQClientException e) {
                             result = -1;
@@ -193,6 +201,7 @@ public class RebalancePushImpl extends RebalanceImpl {
                         try {
                             long timestamp = UtilAll.parseDate(this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getConsumeTimestamp(),
                                 UtilAll.YYYYMMDDHHMMSS).getTime();
+                            //根据时间戳获取对应的偏移量
                             result = this.mQClientFactory.getMQAdminImpl().searchOffset(mq, timestamp);
                         } catch (MQClientException e) {
                             result = -1;
@@ -214,6 +223,7 @@ public class RebalancePushImpl extends RebalanceImpl {
     @Override
     public void dispatchPullRequest(List<PullRequest> pullRequestList) {
         for (PullRequest pullRequest : pullRequestList) {
+            //加入到请求队列
             this.defaultMQPushConsumerImpl.executePullRequestImmediately(pullRequest);
             log.info("doRebalance, {}, add a new pull request {}", consumerGroup, pullRequest);
         }

@@ -121,6 +121,7 @@ public class BrokerStartup {
                 messageStoreConfig.setAccessMessageInMemoryMaxRatio(ratio);
             }
 
+            //加载配置文件
             if (commandLine.hasOption('c')) {
                 String file = commandLine.getOptionValue('c');
                 if (file != null) {
@@ -140,6 +141,7 @@ public class BrokerStartup {
                 }
             }
 
+            //将配置文件转化为类
             MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), brokerConfig);
 
             if (null == brokerConfig.getRocketmqHome()) {
@@ -148,6 +150,7 @@ public class BrokerStartup {
             }
 
             String namesrvAddr = brokerConfig.getNamesrvAddr();
+            brokerConfig.setNamesrvAddr("127.0.0.1:9876");
             if (null != namesrvAddr) {
                 try {
                     String[] addrArray = namesrvAddr.split(";");

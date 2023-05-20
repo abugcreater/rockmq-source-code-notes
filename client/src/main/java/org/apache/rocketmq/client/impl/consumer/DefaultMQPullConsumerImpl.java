@@ -513,6 +513,7 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
 
                     @Override
                     public void onSuccess(PullResult pullResult) {
+                        //处理消息将消息字节解码并填充msgFoundList
                         PullResult userPullResult = DefaultMQPullConsumerImpl.this.pullAPIWrapper.processPullResult(mq, pullResult, subscriptionData);
                         resetTopic(userPullResult.getMsgFoundList());
                         pullCallback.onSuccess(userPullResult);

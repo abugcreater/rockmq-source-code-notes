@@ -25,6 +25,9 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+/**
+ * 消息队列文件
+ */
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -41,6 +44,7 @@ public class ConsumeQueue {
     private final String storePath;
     private final int mappedFileSize;
     private long maxPhysicOffset = -1;
+    //最小逻辑偏移量
     private volatile long minLogicOffset = 0;
     private ConsumeQueueExt consumeQueueExt = null;
 
@@ -153,59 +157,74 @@ public class ConsumeQueue {
     }
 
     public long getOffsetInQueueByTime(final long timestamp) {
+        //根据时间戳获取mappedFile
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
             long offset = 0;
+            //通过比较minLogicOffset和文件的起始偏移量获取两者中的最小偏移量
             int low = minLogicOffset > mappedFile.getFileFromOffset() ? (int) (minLogicOffset - mappedFile.getFileFromOffset()) : 0;
             int high = 0;
             int midOffset = -1, targetOffset = -1, leftOffset = -1, rightOffset = -1;
             long leftIndexValue = -1L, rightIndexValue = -1L;
+            //commitLog最小偏移量
             long minPhysicOffset = this.defaultMessageStore.getMinPhyOffset();
             SelectMappedBufferResult sbr = mappedFile.selectMappedBuffer(0);
             if (null != sbr) {
                 ByteBuffer byteBuffer = sbr.getByteBuffer();
                 high = byteBuffer.limit() - CQ_STORE_UNIT_SIZE;
                 try {
+                    //二分法查找加速检索,如果找到的消息偏移量小于minPhysicOffset则结束查找过程
                     while (high >= low) {
+                        //首先找到中间的偏移量midOffset,将整个ConsumeQueue对应的ByteBuffer定位到midOffset
                         midOffset = (low + high) / (2 * CQ_STORE_UNIT_SIZE) * CQ_STORE_UNIT_SIZE;
                         byteBuffer.position(midOffset);
                         long phyOffset = byteBuffer.getLong();
+                        //读取4个字节获取该消息的物理偏移量offset
                         int size = byteBuffer.getInt();
+                        //如果得到的物理偏移量小于当前的最小物理偏移量,说明待查找的物理偏移量肯定大于midOffset,
+                        //所以将low设置为midOffset继续折半查找
                         if (phyOffset < minPhysicOffset) {
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             continue;
                         }
-
+                        //如果offset大于最小物理偏移量,说明消息是有效消息,则根据消息偏移量和消息长度获取消息的存储时间戳
                         long storeTime =
                             this.defaultMessageStore.getCommitLog().pickupStoreTimestamp(phyOffset, size);
+                        //如果存储时间小于0,消息为无效消息,直接返回0
                         if (storeTime < 0) {
                             return 0;
+                        //如果存储时间戳等于查找时间戳,则查到了匹配的消息,设置targetOffset并跳出循环
                         } else if (storeTime == timestamp) {
                             targetOffset = midOffset;
                             break;
+                        //如果存储时间戳大于查找时间戳,说明查找信息小midOffset,则设置high为midOffset,rightIndexValue为storeTime
                         } else if (storeTime > timestamp) {
                             high = midOffset - CQ_STORE_UNIT_SIZE;
                             rightOffset = midOffset;
                             rightIndexValue = storeTime;
                         } else {
+                            //如果存储时间戳小于查找时间戳,说明查找信息大midOffset,则设置low为midOffset,leftIndexValue为storeTime
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             leftIndexValue = storeTime;
                         }
                     }
 
+                    //targetOffset有值说明找到了匹配的信息
                     if (targetOffset != -1) {
-
                         offset = targetOffset;
                     } else {
+                        //当前时间戳大于并且最接近待查找的偏移量
                         if (leftIndexValue == -1) {
 
                             offset = rightOffset;
+                        //返回的消息比待查找时间戳小并且最接近查找的偏移量
                         } else if (rightIndexValue == -1) {
 
                             offset = leftOffset;
                         } else {
+                            //取最接近的时间戳的那一个值
                             offset =
                                 Math.abs(timestamp - leftIndexValue) > Math.abs(timestamp
                                     - rightIndexValue) ? rightOffset : leftOffset;
@@ -376,6 +395,10 @@ public class ConsumeQueue {
         return this.minLogicOffset / CQ_STORE_UNIT_SIZE;
     }
 
+    /**
+     *
+     * @param request
+     */
     public void putMessagePositionInfoWrapper(DispatchRequest request) {
         final int maxRetries = 30;
         boolean canWrite = this.defaultMessageStore.getRunningFlags().isCQWriteable();
@@ -395,6 +418,7 @@ public class ConsumeQueue {
                         topic, queueId, request.getCommitLogOffset());
                 }
             }
+            //转发消费队列消息
             boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
                 request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
             if (result) {
@@ -429,19 +453,20 @@ public class ConsumeQueue {
             log.warn("Maybe try to build consume queue repeatedly maxPhysicOffset={} phyOffset={}", maxPhysicOffset, offset);
             return true;
         }
-
+        //将消息偏移量,消息长度,tagsCode写入bytebuffer
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
         this.byteBufferIndex.putLong(offset);
         this.byteBufferIndex.putInt(size);
         this.byteBufferIndex.putLong(tagsCode);
-
+        //计算物理地址
         final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
-
+        //根据物理地址获取MappedFile
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile(expectLogicOffset);
         if (mappedFile != null) {
 
             if (mappedFile.isFirstCreateInQueue() && cqOffset != 0 && mappedFile.getWrotePosition() == 0) {
+                //初始化文件属性
                 this.minLogicOffset = expectLogicOffset;
                 this.mappedFileQueue.setFlushedWhere(expectLogicOffset);
                 this.mappedFileQueue.setCommittedWhere(expectLogicOffset);
@@ -449,7 +474,7 @@ public class ConsumeQueue {
                 log.info("fill pre blank space " + mappedFile.getFileName() + " " + expectLogicOffset + " "
                     + mappedFile.getWrotePosition());
             }
-
+            //比较当前逻辑偏移量和计算得到的偏移量的关系
             if (cqOffset != 0) {
                 long currentLogicOffset = mappedFile.getWrotePosition() + mappedFile.getFileFromOffset();
 
@@ -471,6 +496,7 @@ public class ConsumeQueue {
                 }
             }
             this.maxPhysicOffset = offset + size;
+            //将消息添加到文件尾部
             return mappedFile.appendMessage(this.byteBufferIndex.array());
         }
         return false;
@@ -488,12 +514,21 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据startIndex获取消息队列消费条目
+     * @param startIndex
+     * @return
+     */
     public SelectMappedBufferResult getIndexBuffer(final long startIndex) {
         int mappedFileSize = this.mappedFileSize;
+        //index*每条目录长度获取offset值,offset是consumeQueue中的物理偏移量
         long offset = startIndex * CQ_STORE_UNIT_SIZE;
+        //如果offset大于minLogicOffset说明消息已经被消除
         if (offset >= this.getMinLogicOffset()) {
+            //根据offset值获取物理文件中的相关信息,定位物理文件
             MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);
             if (mappedFile != null) {
+                //从该偏移量开始连续读取20字节即可
                 SelectMappedBufferResult result = mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));
                 return result;
             }
@@ -525,7 +560,9 @@ public class ConsumeQueue {
 
     public long rollNextFile(final long index) {
         int mappedFileSize = this.mappedFileSize;
+        //文件包含的消息条目总数
         int totalUnitsInFile = mappedFileSize / CQ_STORE_UNIT_SIZE;
+        //根据当前偏移量获取下一个文件的其实偏移量."index % totalUnitsInFile"目的是选中下一个文件的起始偏移量
         return index + totalUnitsInFile - index % totalUnitsInFile;
     }
 
@@ -546,9 +583,11 @@ public class ConsumeQueue {
     }
 
     public void destroy() {
+        //重置consumeQueue的maxPhysicOffset和minLogicOffset
         this.maxPhysicOffset = -1;
         this.minLogicOffset = 0;
         this.mappedFileQueue.destroy();
+        //批量删除文件
         if (isExtReadEnable()) {
             this.consumeQueueExt.destroy();
         }

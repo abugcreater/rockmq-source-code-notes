@@ -53,16 +53,19 @@ public class EndTransactionProcessor extends AsyncNettyRequestProcessor implemen
     @Override
     public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request) throws
         RemotingCommandException {
+        //初始化返回值
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
+        //解析结束事务请求头
         final EndTransactionRequestHeader requestHeader =
             (EndTransactionRequestHeader)request.decodeCommandCustomHeader(EndTransactionRequestHeader.class);
         LOGGER.debug("Transaction request:{}", requestHeader);
+        //如果是SLAVE角色则直接返回
         if (BrokerRole.SLAVE == brokerController.getMessageStoreConfig().getBrokerRole()) {
             response.setCode(ResponseCode.SLAVE_NOT_AVAILABLE);
             LOGGER.warn("Message store is slave mode, so end transaction is forbidden. ");
             return response;
         }
-
+        //日志输出
         if (requestHeader.getFromTransactionCheck()) {
             switch (requestHeader.getCommitOrRollback()) {
                 case MessageSysFlag.TRANSACTION_NOT_TYPE: {
@@ -123,19 +126,28 @@ public class EndTransactionProcessor extends AsyncNettyRequestProcessor implemen
             }
         }
         OperationResult result = new OperationResult();
+        //如果结束事务为提交事务,处理事务提交逻辑
         if (MessageSysFlag.TRANSACTION_COMMIT_TYPE == requestHeader.getCommitOrRollback()) {
+            //根据请求头的offset值获取消息
             result = this.brokerController.getTransactionalMessageService().commitMessage(requestHeader);
+            //消息获取成功
             if (result.getResponseCode() == ResponseCode.SUCCESS) {
+                //校验事务消息属性
                 RemotingCommand res = checkPrepareMessage(result.getPrepareMessage(), requestHeader);
                 if (res.getCode() == ResponseCode.SUCCESS) {
+                    //组装MessageExtBrokerInner实体
                     MessageExtBrokerInner msgInner = endMessageTransaction(result.getPrepareMessage());
+                    //设置相关属性
                     msgInner.setSysFlag(MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), requestHeader.getCommitOrRollback()));
                     msgInner.setQueueOffset(requestHeader.getTranStateTableOffset());
                     msgInner.setPreparedTransactionOffset(requestHeader.getCommitLogOffset());
                     msgInner.setStoreTimestamp(result.getPrepareMessage().getStoreTimestamp());
+                    //清理事务消息属性
                     MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_TRANSACTION_PREPARED);
+                    //重新存储消息到指定的队列,此时消息会被转发到指定队列被消费者消费
                     RemotingCommand sendResult = sendFinalMessage(msgInner);
                     if (sendResult.getCode() == ResponseCode.SUCCESS) {
+                        //删除prepare消息,逻辑删除;将消息移动到RMQ_SYS_TRANS_OP_HALF_TOPIC队列表示消息已经被处理过了
                         this.brokerController.getTransactionalMessageService().deletePrepareMessage(result.getPrepareMessage());
                     }
                     return sendResult;
@@ -143,10 +155,12 @@ public class EndTransactionProcessor extends AsyncNettyRequestProcessor implemen
                 return res;
             }
         } else if (MessageSysFlag.TRANSACTION_ROLLBACK_TYPE == requestHeader.getCommitOrRollback()) {
+            //获取消息
             result = this.brokerController.getTransactionalMessageService().rollbackMessage(requestHeader);
             if (result.getResponseCode() == ResponseCode.SUCCESS) {
                 RemotingCommand res = checkPrepareMessage(result.getPrepareMessage(), requestHeader);
                 if (res.getCode() == ResponseCode.SUCCESS) {
+                    //删除prepare消息,逻辑删除;将消息移动到RMQ_SYS_TRANS_OP_HALF_TOPIC队列表示消息已经被处理过了
                     this.brokerController.getTransactionalMessageService().deletePrepareMessage(result.getPrepareMessage());
                 }
                 return res;
@@ -219,6 +233,7 @@ public class EndTransactionProcessor extends AsyncNettyRequestProcessor implemen
 
     private RemotingCommand sendFinalMessage(MessageExtBrokerInner msgInner) {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
+        //重新存储消息
         final PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
         if (putMessageResult != null) {
             switch (putMessageResult.getPutMessageStatus()) {

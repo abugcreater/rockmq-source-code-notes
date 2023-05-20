@@ -67,6 +67,13 @@ public class PullAPIWrapper {
         this.unitMode = unitMode;
     }
 
+    /**
+     * 处理拉取结果
+     * @param mq
+     * @param pullResult
+     * @param subscriptionData
+     * @return
+     */
     public PullResult processPullResult(final MessageQueue mq, final PullResult pullResult,
         final SubscriptionData subscriptionData) {
         PullResultExt pullResultExt = (PullResultExt) pullResult;
@@ -81,6 +88,7 @@ public class PullAPIWrapper {
                 msgListFilterAgain = new ArrayList<MessageExt>(msgList.size());
                 for (MessageExt msg : msgList) {
                     if (msg.getTags() != null) {
+                        //过滤消息
                         if (subscriptionData.getTagsSet().contains(msg.getTags())) {
                             msgListFilterAgain.add(msg);
                         }
@@ -140,13 +148,33 @@ public class PullAPIWrapper {
         }
     }
 
+    /**
+     * 拉动内核Impl
+     * @param mq 从哪个消息队列拉取消息
+     * @param subExpression 消息过滤表达式
+     * @param expressionType 消息表达式类型,分为 TAG,SQL92
+     * @param subVersion 子版本号
+     * @param offset  消息拉取偏移量
+     * @param maxNums 本次拉取最大消息条数
+     * @param sysFlag 拉取系统标志
+     * @param commitOffset 当前MessageQueue的消费进度(内存中)
+     * @param brokerSuspendMaxTimeMillis 消息拉取过程中允许broker挂起时间,默认15s
+     * @param timeoutMillis 消息拉取超时时间
+     * @param communicationMode 消息拉取模式默认异步
+     * @param pullCallback 从broker拉取到消息后的回调方法
+     * @return
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public PullResult pullKernelImpl(
         final MessageQueue mq,
         final String subExpression,
         final String expressionType,
         final long subVersion,
         final long offset,
-        final int maxNums,
+        final int maxNums,/*最大拉取条数32*/
         final int sysFlag,
         final long commitOffset,
         final long brokerSuspendMaxTimeMillis,
@@ -154,9 +182,11 @@ public class PullAPIWrapper {
         final CommunicationMode communicationMode,
         final PullCallback pullCallback
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        //根据BrokerName,获取broker地址,每次拉取消息后会给出建议下次从主节点还是从节点拉
         FindBrokerResult findBrokerResult =
             this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(),
                 this.recalculatePullFromWhichNode(mq), false);
+        //获取失败则根据topic获取broker地址
         if (null == findBrokerResult) {
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());
             findBrokerResult =
@@ -164,9 +194,11 @@ public class PullAPIWrapper {
                     this.recalculatePullFromWhichNode(mq), false);
         }
 
+        //组装请求并调用
         if (findBrokerResult != null) {
             {
                 // check version
+                //判断过滤模式当前版本是否支持
                 if (!ExpressionType.isTagType(expressionType)
                     && findBrokerResult.getBrokerVersion() < MQVersion.Version.V4_1_0_SNAPSHOT.ordinal()) {
                     throw new MQClientException("The broker[" + mq.getBrokerName() + ", "
@@ -178,7 +210,7 @@ public class PullAPIWrapper {
             if (findBrokerResult.isSlave()) {
                 sysFlagInner = PullSysFlag.clearCommitOffsetFlag(sysFlagInner);
             }
-
+            //组装请求头
             PullMessageRequestHeader requestHeader = new PullMessageRequestHeader();
             requestHeader.setConsumerGroup(this.consumerGroup);
             requestHeader.setTopic(mq.getTopic());
@@ -194,6 +226,7 @@ public class PullAPIWrapper {
 
             String brokerAddr = findBrokerResult.getBrokerAddr();
             if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {
+                //如果有类过滤标记则需要修改broker地址为FilterServer的地址
                 brokerAddr = computePullFromWhichFilterServer(mq.getTopic(), brokerAddr);
             }
 
@@ -210,6 +243,11 @@ public class PullAPIWrapper {
         throw new MQClientException("The broker[" + mq.getBrokerName() + "] not exist", null);
     }
 
+    /**
+     * 根据消息队列返回brokerId
+     * @param mq
+     * @return
+     */
     public long recalculatePullFromWhichNode(final MessageQueue mq) {
         if (this.isConnectBrokerByUser()) {
             return this.defaultBrokerId;

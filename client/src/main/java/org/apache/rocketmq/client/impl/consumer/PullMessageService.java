@@ -43,6 +43,11 @@ public class PullMessageService extends ServiceThread {
         this.mQClientFactory = mQClientFactory;
     }
 
+    /**
+     * 延迟添加PullRequest到队列
+     * @param pullRequest
+     * @param timeDelay
+     */
     public void executePullRequestLater(final PullRequest pullRequest, final long timeDelay) {
         if (!isStopped()) {
             this.scheduledExecutorService.schedule(new Runnable() {
@@ -56,6 +61,10 @@ public class PullMessageService extends ServiceThread {
         }
     }
 
+    /**
+     * 立刻添加PullRequest到队列
+     * @param pullRequest
+     */
     public void executePullRequestImmediately(final PullRequest pullRequest) {
         try {
             this.pullRequestQueue.put(pullRequest);
@@ -77,8 +86,10 @@ public class PullMessageService extends ServiceThread {
     }
 
     private void pullMessage(final PullRequest pullRequest) {
+        //根据组名获取消费者内部实现类
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(pullRequest.getConsumerGroup());
         if (consumer != null) {
+            //强转为DefaultMQPushConsumerImpl
             DefaultMQPushConsumerImpl impl = (DefaultMQPushConsumerImpl) consumer;
             impl.pullMessage(pullRequest);
         } else {
@@ -90,9 +101,13 @@ public class PullMessageService extends ServiceThread {
     public void run() {
         log.info(this.getServiceName() + " service started");
 
+        //protected volatile boolean stopped = false; 通过控制boolean值,控制消息的获取
         while (!this.isStopped()) {
             try {
+                //阻塞获取,启动时没有pullRequest对象而阻塞
+                //那么什么时候创建pullRequest并加入队列?多个消费者负载多个队列? 在消息负载时
                 PullRequest pullRequest = this.pullRequestQueue.take();
+                //拉取消息
                 this.pullMessage(pullRequest);
             } catch (InterruptedException ignored) {
             } catch (Exception e) {

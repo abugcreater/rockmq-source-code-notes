@@ -55,6 +55,7 @@ public class IndexService {
     }
 
     public boolean load(final boolean lastExitOK) {
+        //整体加载思路与commitlog类似
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();
         if (files != null) {
@@ -201,14 +202,16 @@ public class IndexService {
     public void buildIndex(DispatchRequest req) {
         IndexFile indexFile = retryGetAndCreateIndexFile();
         if (indexFile != null) {
+            //获取index文件最大偏移量
             long endPhyOffset = indexFile.getEndPhyOffset();
             DispatchRequest msg = req;
             String topic = msg.getTopic();
             String keys = msg.getKeys();
+            //如果消息的物理偏移量小于最大偏移量,则说明已经写入过了,忽略本次写入
             if (msg.getCommitLogOffset() < endPhyOffset) {
                 return;
             }
-
+            //忽略事务类型为rollback的值
             final int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());
             switch (tranType) {
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
@@ -218,8 +221,9 @@ public class IndexService {
                 case MessageSysFlag.TRANSACTION_ROLLBACK_TYPE:
                     return;
             }
-
+            //如果唯一键不为空
             if (req.getUniqKey() != null) {
+                //将该key添加到消息索引中,一遍加速根据唯一键检索消息
                 indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));
                 if (indexFile == null) {
                     log.error("putKey error commitlog {} uniqkey {}", req.getCommitLogOffset(), req.getUniqKey());
@@ -228,10 +232,12 @@ public class IndexService {
             }
 
             if (keys != null && keys.length() > 0) {
+                //多个索引用空格分隔
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
                 for (int i = 0; i < keyset.length; i++) {
                     String key = keyset[i];
                     if (key.length() > 0) {
+                        //将该key添加到消息索引中,一遍加速根据唯一键检索消息
                         indexFile = putKey(indexFile, msg, buildKey(topic, key));
                         if (indexFile == null) {
                             log.error("putKey error commitlog {} uniqkey {}", req.getCommitLogOffset(), req.getUniqKey());

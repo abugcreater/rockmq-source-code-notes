@@ -24,6 +24,7 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.message.MessageQueue;
 
 /**
+ * 平均轮询分配 示例 a(1,4,7) b(2,5,8) c(3,6)
  * Cycle average Hashing queue algorithm
  */
 public class AllocateMessageQueueAveragelyByCircle implements AllocateMessageQueueStrategy {

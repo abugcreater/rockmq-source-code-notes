@@ -56,6 +56,7 @@ public class FilterServerManager {
             @Override
             public void run() {
                 try {
+                    //定时扫描,检测存活filter个数
                     FilterServerManager.this.createFilterServer();
                 } catch (Exception e) {
                     log.error("", e);
@@ -67,8 +68,12 @@ public class FilterServerManager {
     public void createFilterServer() {
         int more =
             this.brokerController.getBrokerConfig().getFilterServerNums() - this.filterServerTable.size();
+        //构件shell名并调用
         String cmd = this.buildStartCommand();
         for (int i = 0; i < more; i++) {
+            /**
+             * 构件启动命令,并调用
+             */
             FilterServerUtil.callShell(cmd, log);
         }
     }
@@ -145,8 +150,8 @@ public class FilterServerManager {
     }
 
     static class FilterServerInfo {
-        private String filterServerAddr;
-        private long lastUpdateTimestamp;
+        private String filterServerAddr; //filterServer服务器地址
+        private long lastUpdateTimestamp; //最后发心跳时间
 
         public String getFilterServerAddr() {
             return filterServerAddr;

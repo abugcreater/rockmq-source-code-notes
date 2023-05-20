@@ -29,9 +29,15 @@ import org.apache.rocketmq.common.message.MessageQueue;
 
 public class RebalanceLockManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.REBALANCE_LOCK_LOGGER_NAME);
+    /**
+     * 锁最大存活时间默认60s
+     */
     private final static long REBALANCE_LOCK_MAX_LIVE_TIME = Long.parseLong(System.getProperty(
         "rocketmq.broker.rebalance.lockMaxLiveTime", "60000"));
     private final Lock lock = new ReentrantLock();
+    /**
+     * 锁容器,以消费组为分组,每个消费队列持有一个锁实体,表示该消息队列被消费组的哪个消费者持有
+     */
     private final ConcurrentMap<String/* group */, ConcurrentHashMap<MessageQueue, LockEntry>> mqLockTable =
         new ConcurrentHashMap<String, ConcurrentHashMap<MessageQueue, LockEntry>>(1024);
 
@@ -114,6 +120,13 @@ public class RebalanceLockManager {
         return false;
     }
 
+    /**
+     * 申请对mqs消息队列集合进行加锁
+     * @param group
+     * @param mqs
+     * @param clientId 消息消费者CID
+     * @return
+     */
     public Set<MessageQueue> tryLockBatch(final String group, final Set<MessageQueue> mqs,
         final String clientId) {
         Set<MessageQueue> lockedMqs = new HashSet<MessageQueue>(mqs.size());
@@ -189,6 +202,12 @@ public class RebalanceLockManager {
         return lockedMqs;
     }
 
+    /**
+     * 申请对mqs进行解锁
+     * @param group
+     * @param mqs
+     * @param clientId
+     */
     public void unlockBatch(final String group, final Set<MessageQueue> mqs, final String clientId) {
         try {
             this.lock.lockInterruptibly();

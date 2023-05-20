@@ -22,6 +22,9 @@ import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * 消息失败策略,延迟实现的门面类
+ */
 public class MQFaultStrategy {
     private final static InternalLogger log = ClientLogger.getLog();
     private final LatencyFaultTolerance<String> latencyFaultTolerance = new LatencyFaultToleranceImpl();
@@ -55,10 +58,19 @@ public class MQFaultStrategy {
         this.sendLatencyFaultEnable = sendLatencyFaultEnable;
     }
 
+    /**
+     * 根据路由消息选择消息队列
+     * @param tpInfo
+     * @param lastBrokerName
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
+        //sendLatencyFaultEnable = true:启用broker故障延迟机制 false 默认不启用broker故障延迟机制
         if (this.sendLatencyFaultEnable) {
+            //broker的故障延迟机制
             try {
                 int index = tpInfo.getSendWhichQueue().getAndIncrement();
+                //根据计数获取队列中指定index的MessageQueue,如果存在则直接返回
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
                     int pos = Math.abs(index++) % tpInfo.getMessageQueueList().size();
                     if (pos < 0)
@@ -67,10 +79,11 @@ public class MQFaultStrategy {
                     if (latencyFaultTolerance.isAvailable(mq.getBrokerName()))
                         return mq;
                 }
-
+                //尝试从规避的broker中选取一个,如果没有则返回null
                 final String notBestBroker = latencyFaultTolerance.pickOneAtLeast();
                 int writeQueueNums = tpInfo.getQueueIdByBroker(notBestBroker);
                 if (writeQueueNums > 0) {
+                    //获取队列后填充信息返回
                     final MessageQueue mq = tpInfo.selectOneMessageQueue();
                     if (notBestBroker != null) {
                         mq.setBrokerName(notBestBroker);
@@ -78,20 +91,22 @@ public class MQFaultStrategy {
                     }
                     return mq;
                 } else {
+                    //如果没有写队列则移除该broker名称
                     latencyFaultTolerance.remove(notBestBroker);
                 }
             } catch (Exception e) {
                 log.error("Error occurred when selecting message queue", e);
             }
-
             return tpInfo.selectOneMessageQueue();
         }
 
+        //sendLatencyFaultEnable = false:默认不启用broker故障延迟机制
         return tpInfo.selectOneMessageQueue(lastBrokerName);
     }
 
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation) {
         if (this.sendLatencyFaultEnable) {
+            //如果 isolation = true则故障规避时间为30s,否则为本次执行时间
             long duration = computeNotAvailableDuration(isolation ? 30000 : currentLatency);
             this.latencyFaultTolerance.updateFaultItem(brokerName, currentLatency, duration);
         }

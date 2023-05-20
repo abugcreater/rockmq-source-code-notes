@@ -36,16 +36,39 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
 /**
+ * 广播模式下消费进度存储
+ * 存储在消费者本地
  * Local storage implementation
  */
 public class LocalFileOffsetStore implements OffsetStore {
+
+    /**
+     * 消息进度存储目录
+     */
     public final static String LOCAL_OFFSET_STORE_DIR = System.getProperty(
         "rocketmq.client.localOffsetStoreDir",
         System.getProperty("user.home") + File.separator + ".rocketmq_offsets");
     private final static InternalLogger log = ClientLogger.getLog();
+    /**
+     * 消息客户端
+     */
     private final MQClientInstance mQClientFactory;
+    /**
+     * 消息消费组
+     */
     private final String groupName;
+    /**
+     * 存储路径
+     */
     private final String storePath;
+    /**
+     * 内存中缓存的消息队列消费进度,广播消费模式消费进度和消费组无关
+     * {{
+     *   "topic": "",
+     *   "brokerName": "",
+     *   "queueId": 0
+     * }:1}
+     */
     private ConcurrentMap<MessageQueue, AtomicLong> offsetTable =
         new ConcurrentHashMap<MessageQueue, AtomicLong>();
 
@@ -62,8 +85,9 @@ public class LocalFileOffsetStore implements OffsetStore {
     public void load() throws MQClientException {
         OffsetSerializeWrapper offsetSerializeWrapper = this.readLocalOffset();
         if (offsetSerializeWrapper != null && offsetSerializeWrapper.getOffsetTable() != null) {
+            //初始化offsetTable
             offsetTable.putAll(offsetSerializeWrapper.getOffsetTable());
-
+            //遍历打印所有队列的进度
             for (MessageQueue mq : offsetSerializeWrapper.getOffsetTable().keySet()) {
                 AtomicLong offset = offsetSerializeWrapper.getOffsetTable().get(mq);
                 log.info("load consumer's offset, {} {} {}",
@@ -92,6 +116,12 @@ public class LocalFileOffsetStore implements OffsetStore {
         }
     }
 
+    /**
+     * 从磁盘中读取消息队列的消费进度
+     * @param mq
+     * @param type
+     * @return
+     */
     @Override
     public long readOffset(final MessageQueue mq, final ReadOffsetType type) {
         if (mq != null) {
@@ -128,11 +158,17 @@ public class LocalFileOffsetStore implements OffsetStore {
         return -1;
     }
 
+
+    /**
+     * 持久化消费进度,默认5s持久化一次
+     * 启动方法 MQClientInstance.this.persistAllConsumerOffset();
+     * @param mqs
+     */
     @Override
     public void persistAll(Set<MessageQueue> mqs) {
         if (null == mqs || mqs.isEmpty())
             return;
-
+        //获取对应消息队列的消费进度,并持久化到磁盘
         OffsetSerializeWrapper offsetSerializeWrapper = new OffsetSerializeWrapper();
         for (Map.Entry<MessageQueue, AtomicLong> entry : this.offsetTable.entrySet()) {
             if (mqs.contains(entry.getKey())) {
@@ -180,6 +216,11 @@ public class LocalFileOffsetStore implements OffsetStore {
         return cloneOffsetTable;
     }
 
+    /**
+     * 读取本地文件storePath转化为JSON格式解析进度
+     * @return
+     * @throws MQClientException
+     */
     private OffsetSerializeWrapper readLocalOffset() throws MQClientException {
         String content = null;
         try {

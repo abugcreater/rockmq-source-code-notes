@@ -328,7 +328,7 @@ public class BrokerController {
             this.consumerManageExecutor =
                 Executors.newFixedThreadPool(this.brokerConfig.getConsumerManageThreadPoolNums(), new ThreadFactoryImpl(
                     "ConsumerManageThread_"));
-
+            //启动时注册各种处理器
             this.registerProcessor();
 
             final long initialDelay = UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis();
@@ -892,6 +892,7 @@ public class BrokerController {
             @Override
             public void run() {
                 try {
+                    //每10s中发送心跳
                     BrokerController.this.registerBrokerAll(true, false, brokerConfig.isForceRegister());
                 } catch (Throwable e) {
                     log.error("registerBrokerAll Exception", e);
@@ -910,6 +911,30 @@ public class BrokerController {
 
     }
 
+    public synchronized void registerBrokerAll(final boolean checkOrderConfig, boolean oneway, boolean forceRegister) {
+        TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();
+
+        if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())
+                || !PermName.isReadable(this.getBrokerConfig().getBrokerPermission())) {
+            ConcurrentHashMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>();
+            for (TopicConfig topicConfig : topicConfigWrapper.getTopicConfigTable().values()) {
+                TopicConfig tmp =
+                        new TopicConfig(topicConfig.getTopicName(), topicConfig.getReadQueueNums(), topicConfig.getWriteQueueNums(),
+                                this.brokerConfig.getBrokerPermission());
+                topicConfigTable.put(topicConfig.getTopicName(), tmp);
+            }
+            topicConfigWrapper.setTopicConfigTable(topicConfigTable);
+        }
+
+        if (forceRegister || needRegister(this.brokerConfig.getBrokerClusterName(),
+                this.getBrokerAddr(),
+                this.brokerConfig.getBrokerName(),
+                this.brokerConfig.getBrokerId(),
+                this.brokerConfig.getRegisterBrokerTimeoutMills())) {
+            doRegisterBrokerAll(checkOrderConfig, oneway, topicConfigWrapper);
+        }
+    }
+
     public synchronized void registerIncrementBrokerData(TopicConfig topicConfig, DataVersion dataVersion) {
         TopicConfig registerTopicConfig = topicConfig;
         if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())
@@ -926,30 +951,6 @@ public class BrokerController {
         topicConfigSerializeWrapper.setTopicConfigTable(topicConfigTable);
 
         doRegisterBrokerAll(true, false, topicConfigSerializeWrapper);
-    }
-
-    public synchronized void registerBrokerAll(final boolean checkOrderConfig, boolean oneway, boolean forceRegister) {
-        TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();
-
-        if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())
-            || !PermName.isReadable(this.getBrokerConfig().getBrokerPermission())) {
-            ConcurrentHashMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>();
-            for (TopicConfig topicConfig : topicConfigWrapper.getTopicConfigTable().values()) {
-                TopicConfig tmp =
-                    new TopicConfig(topicConfig.getTopicName(), topicConfig.getReadQueueNums(), topicConfig.getWriteQueueNums(),
-                        this.brokerConfig.getBrokerPermission());
-                topicConfigTable.put(topicConfig.getTopicName(), tmp);
-            }
-            topicConfigWrapper.setTopicConfigTable(topicConfigTable);
-        }
-
-        if (forceRegister || needRegister(this.brokerConfig.getBrokerClusterName(),
-            this.getBrokerAddr(),
-            this.brokerConfig.getBrokerName(),
-            this.brokerConfig.getBrokerId(),
-            this.brokerConfig.getRegisterBrokerTimeoutMills())) {
-            doRegisterBrokerAll(checkOrderConfig, oneway, topicConfigWrapper);
-        }
     }
 
     private void doRegisterBrokerAll(boolean checkOrderConfig, boolean oneway,

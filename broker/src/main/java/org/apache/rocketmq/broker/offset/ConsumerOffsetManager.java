@@ -37,7 +37,10 @@ public class ConsumerOffsetManager extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_GROUP_SEPARATOR = "@";
 
-    private ConcurrentMap<String/* topic@group */, ConcurrentMap<Integer, Long>> offsetTable =
+    /**
+     * {"topic@group":{0:11}}
+     */
+    private ConcurrentMap<String/* topic@group */, ConcurrentMap<Integer, Long>/*{queueId: offset}*/> offsetTable =
         new ConcurrentHashMap<String, ConcurrentMap<Integer, Long>>(512);
 
     private transient BrokerController brokerController;
@@ -125,6 +128,13 @@ public class ConsumerOffsetManager extends ConfigManager {
         this.commitOffset(clientHost, key, queueId, offset);
     }
 
+    /**
+     * 处理消费者更新进度请求
+     * @param clientHost
+     * @param key  topic@group
+     * @param queueId
+     * @param offset
+     */
     private void commitOffset(final String clientHost, final String key, final int queueId, final long offset) {
         ConcurrentMap<Integer, Long> map = this.offsetTable.get(key);
         if (null == map) {

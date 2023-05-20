@@ -28,16 +28,18 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
  */
 public interface OffsetStore {
     /**
-     * Load
+     * Load 加载消费进度到内存
      */
     void load() throws MQClientException;
 
     /**
+     * 更新内存中的消费进度
      * Update the offset,store it in memory
      */
     void updateOffset(final MessageQueue mq, final long offset, final boolean increaseOnly);
 
     /**
+     * 获取消费进度
      * Get offset from local storage
      *
      * @return The fetched offset
@@ -45,26 +47,31 @@ public interface OffsetStore {
     long readOffset(final MessageQueue mq, final ReadOffsetType type);
 
     /**
+     * 持久化指定消息队列消费进度到磁盘
      * Persist all offsets,may be in local storage or remote name server
      */
     void persistAll(final Set<MessageQueue> mqs);
 
     /**
+     * 持久化单个
      * Persist the offset,may be in local storage or remote name server
      */
     void persist(final MessageQueue mq);
 
     /**
+     * 从内存中移除队列进度
      * Remove offset
      */
     void removeOffset(MessageQueue mq);
 
     /**
+     * 克隆该主题下所有消息队列的消费进度
      * @return The cloned offset table of given topic
      */
     Map<MessageQueue, Long> cloneOffsetTable(String topic);
 
     /**
+     * 更新存储在broker的消费则消费进度(使用集群模式)
      * @param mq
      * @param offset
      * @param isOneway

@@ -66,6 +66,7 @@ public interface TransactionalMessageService {
     /**
      * Traverse uncommitted/unroll back half message and send check back request to producer to obtain transaction
      * status.
+     * 回查消息事务状态具体实现
      *
      * @param transactionTimeout The minimum time of the transactional message to be checked firstly, one message only
      * exceed this time interval that can be checked.

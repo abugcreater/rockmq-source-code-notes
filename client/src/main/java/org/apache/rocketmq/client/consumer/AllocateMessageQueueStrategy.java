@@ -20,6 +20,7 @@ import java.util.List;
 import org.apache.rocketmq.common.message.MessageQueue;
 
 /**
+ * RocketMQ默认提供了5中分配算法
  * Strategy Algorithm for message allocating between consumers
  */
 public interface AllocateMessageQueueStrategy {

@@ -127,16 +127,16 @@ public class BrokerOuterAPI {
         if (nameServerAddressList != null && nameServerAddressList.size() > 0) {
 
             final RegisterBrokerRequestHeader requestHeader = new RegisterBrokerRequestHeader();
-            requestHeader.setBrokerAddr(brokerAddr);
-            requestHeader.setBrokerId(brokerId);
-            requestHeader.setBrokerName(brokerName);
-            requestHeader.setClusterName(clusterName);
-            requestHeader.setHaServerAddr(haServerAddr);
+            requestHeader.setBrokerAddr(brokerAddr);  //broker地址
+            requestHeader.setBrokerId(brokerId);    // broker Id
+            requestHeader.setBrokerName(brokerName); //broker 名称
+            requestHeader.setClusterName(clusterName); //集群名称
+            requestHeader.setHaServerAddr(haServerAddr); // master地址 初次请求为空,当salve向namesrv注册后返回
             requestHeader.setCompressed(compressed);
 
             RegisterBrokerBody requestBody = new RegisterBrokerBody();
-            requestBody.setTopicConfigSerializeWrapper(topicConfigWrapper);
-            requestBody.setFilterServerList(filterServerList);
+            requestBody.setTopicConfigSerializeWrapper(topicConfigWrapper); //主题配置
+            requestBody.setFilterServerList(filterServerList); //消息过滤服务器列表
             final byte[] body = requestBody.encode(compressed);
             final int bodyCrc32 = UtilAll.crc32(body);
             requestHeader.setBodyCrc32(bodyCrc32);

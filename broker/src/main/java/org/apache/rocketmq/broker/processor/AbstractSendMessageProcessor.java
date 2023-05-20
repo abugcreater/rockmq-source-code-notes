@@ -70,6 +70,12 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
                 .getNettyServerConfig().getListenPort());
     }
 
+    /**
+     * 构件消息上下文
+     * @param ctx
+     * @param requestHeader
+     * @return
+     */
     protected SendMessageContext buildMsgContext(ChannelHandlerContext ctx,
         SendMessageRequestHeader requestHeader) {
         if (!this.hasSendMessageHook()) {
@@ -280,6 +286,12 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
         }
     }
 
+    /**
+     * 格式化请求头
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     protected SendMessageRequestHeader parseRequestHeader(RemotingCommand request)
         throws RemotingCommandException {
 

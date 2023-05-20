@@ -85,6 +85,11 @@ public class MessageAccessor {
         putProperty(msg, MessageConst.PROPERTY_CONSUME_START_TIMESTAMP, propertyConsumeStartTimeStamp);
     }
 
+    /**
+     * 消费开始时间戳
+     * @param msg
+     * @return
+     */
     public static String getConsumeStartTimeStamp(final Message msg) {
         return msg.getProperty(MessageConst.PROPERTY_CONSUME_START_TIMESTAMP);
     }

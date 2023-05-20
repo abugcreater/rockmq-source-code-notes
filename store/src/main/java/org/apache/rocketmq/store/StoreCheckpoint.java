@@ -32,8 +32,17 @@ public class StoreCheckpoint {
     private final RandomAccessFile randomAccessFile;
     private final FileChannel fileChannel;
     private final MappedByteBuffer mappedByteBuffer;
+    /**
+     * commitlog文件刷盘时间点  8字节
+     */
     private volatile long physicMsgTimestamp = 0;
+    /**
+     * consumeQueue文件刷盘时间点 8字节
+     */
     private volatile long logicsMsgTimestamp = 0;
+    /**
+     * indexFile文件刷盘时间点 8字节
+     */
     private volatile long indexMsgTimestamp = 0;
 
     public StoreCheckpoint(final String scpPath) throws IOException {
@@ -99,10 +108,12 @@ public class StoreCheckpoint {
     }
 
     public long getMinTimestampIndex() {
+        //比较index文件与其他两个文件的最小值
         return Math.min(this.getMinTimestamp(), this.indexMsgTimestamp);
     }
 
     public long getMinTimestamp() {
+        //比较消费队列与commit文件刷盘的最小值
         long min = Math.min(this.physicMsgTimestamp, this.logicsMsgTimestamp);
 
         min -= 1000 * 3;

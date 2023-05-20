@@ -40,13 +40,19 @@ public abstract class ReferenceResource {
         return this.available;
     }
 
+    /**
+     *
+     * @param intervalForcibly 销毁的最大存活时间
+     */
     public void shutdown(final long intervalForcibly) {
         if (this.available) {
+            //关闭MappedFile,设置最初停止时间戳
             this.available = false;
             this.firstShutdownTimestamp = System.currentTimeMillis();
             this.release();
         } else if (this.getRefCount() > 0) {
             if ((System.currentTimeMillis() - this.firstShutdownTimestamp) >= intervalForcibly) {
+                //如果超出最大存活时间,每次执行都减少1000引用数
                 this.refCount.set(-1000 - this.getRefCount());
                 this.release();
             }
@@ -54,6 +60,7 @@ public abstract class ReferenceResource {
     }
 
     public void release() {
+        //获取当前引用值
         long value = this.refCount.decrementAndGet();
         if (value > 0)
             return;

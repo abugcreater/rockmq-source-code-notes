@@ -16,17 +16,6 @@
  */
 package org.apache.rocketmq.client.impl;
 
-import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.ClientConfig;
 import org.apache.rocketmq.client.consumer.PullCallback;
@@ -43,106 +32,18 @@ import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
-import org.apache.rocketmq.common.AclConfig;
-import org.apache.rocketmq.common.DataVersion;
-import org.apache.rocketmq.common.MQVersion;
-import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.PlainAccessConfig;
-import org.apache.rocketmq.common.TopicConfig;
-import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.*;
 import org.apache.rocketmq.common.admin.ConsumeStats;
 import org.apache.rocketmq.common.admin.TopicStatsTable;
-import org.apache.rocketmq.common.message.Message;
-import org.apache.rocketmq.common.message.MessageBatch;
-import org.apache.rocketmq.common.message.MessageClientIDSetter;
-import org.apache.rocketmq.common.message.MessageConst;
-import org.apache.rocketmq.common.message.MessageDecoder;
-import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.message.*;
 import org.apache.rocketmq.common.namesrv.TopAddressing;
 import org.apache.rocketmq.common.protocol.NamespaceUtil;
 import org.apache.rocketmq.common.protocol.RequestCode;
 import org.apache.rocketmq.common.protocol.ResponseCode;
-import org.apache.rocketmq.common.protocol.body.BrokerStatsData;
-import org.apache.rocketmq.common.protocol.body.CheckClientRequestBody;
-import org.apache.rocketmq.common.protocol.body.ClusterAclVersionInfo;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
-import org.apache.rocketmq.common.protocol.body.ConsumeStatsList;
-import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
-import org.apache.rocketmq.common.protocol.body.ConsumerRunningInfo;
-import org.apache.rocketmq.common.protocol.body.GetConsumerStatusBody;
-import org.apache.rocketmq.common.protocol.body.GroupList;
-import org.apache.rocketmq.common.protocol.body.KVTable;
-import org.apache.rocketmq.common.protocol.body.LockBatchRequestBody;
-import org.apache.rocketmq.common.protocol.body.LockBatchResponseBody;
-import org.apache.rocketmq.common.protocol.body.ProducerConnection;
-import org.apache.rocketmq.common.protocol.body.QueryConsumeQueueResponseBody;
-import org.apache.rocketmq.common.protocol.body.QueryConsumeTimeSpanBody;
-import org.apache.rocketmq.common.protocol.body.QueryCorrectionOffsetBody;
-import org.apache.rocketmq.common.protocol.body.QueueTimeSpan;
-import org.apache.rocketmq.common.protocol.body.ResetOffsetBody;
-import org.apache.rocketmq.common.protocol.body.SubscriptionGroupWrapper;
-import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
-import org.apache.rocketmq.common.protocol.body.TopicList;
-import org.apache.rocketmq.common.protocol.body.UnlockBatchRequestBody;
-import org.apache.rocketmq.common.protocol.header.CloneGroupOffsetRequestHeader;
-import org.apache.rocketmq.common.protocol.header.ConsumeMessageDirectlyResultRequestHeader;
-import org.apache.rocketmq.common.protocol.header.ConsumerSendMsgBackRequestHeader;
-import org.apache.rocketmq.common.protocol.header.CreateAccessConfigRequestHeader;
-import org.apache.rocketmq.common.protocol.header.CreateTopicRequestHeader;
-import org.apache.rocketmq.common.protocol.header.DeleteAccessConfigRequestHeader;
-import org.apache.rocketmq.common.protocol.header.DeleteSubscriptionGroupRequestHeader;
-import org.apache.rocketmq.common.protocol.header.DeleteTopicRequestHeader;
-import org.apache.rocketmq.common.protocol.header.EndTransactionRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetBrokerAclConfigResponseHeader;
-import org.apache.rocketmq.common.protocol.header.GetBrokerClusterAclConfigResponseBody;
-import org.apache.rocketmq.common.protocol.header.GetConsumeStatsInBrokerHeader;
-import org.apache.rocketmq.common.protocol.header.GetConsumeStatsRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetConsumerConnectionListRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetConsumerListByGroupRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetConsumerListByGroupResponseBody;
-import org.apache.rocketmq.common.protocol.header.GetConsumerRunningInfoRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetConsumerStatusRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetEarliestMsgStoretimeRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetEarliestMsgStoretimeResponseHeader;
-import org.apache.rocketmq.common.protocol.header.GetMaxOffsetRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetMaxOffsetResponseHeader;
-import org.apache.rocketmq.common.protocol.header.GetMinOffsetRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetMinOffsetResponseHeader;
-import org.apache.rocketmq.common.protocol.header.GetProducerConnectionListRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetTopicStatsInfoRequestHeader;
-import org.apache.rocketmq.common.protocol.header.GetTopicsByClusterRequestHeader;
-import org.apache.rocketmq.common.protocol.header.PullMessageRequestHeader;
-import org.apache.rocketmq.common.protocol.header.PullMessageResponseHeader;
-import org.apache.rocketmq.common.protocol.header.QueryConsumeQueueRequestHeader;
-import org.apache.rocketmq.common.protocol.header.QueryConsumeTimeSpanRequestHeader;
-import org.apache.rocketmq.common.protocol.header.QueryConsumerOffsetRequestHeader;
-import org.apache.rocketmq.common.protocol.header.QueryConsumerOffsetResponseHeader;
-import org.apache.rocketmq.common.protocol.header.QueryCorrectionOffsetHeader;
-import org.apache.rocketmq.common.protocol.header.QueryMessageRequestHeader;
-import org.apache.rocketmq.common.protocol.header.QueryTopicConsumeByWhoRequestHeader;
-import org.apache.rocketmq.common.protocol.header.ResetOffsetRequestHeader;
-import org.apache.rocketmq.common.protocol.header.ResumeCheckHalfMessageRequestHeader;
-import org.apache.rocketmq.common.protocol.header.SearchOffsetRequestHeader;
-import org.apache.rocketmq.common.protocol.header.SearchOffsetResponseHeader;
-import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeader;
-import org.apache.rocketmq.common.protocol.header.SendMessageRequestHeaderV2;
-import org.apache.rocketmq.common.protocol.header.SendMessageResponseHeader;
-import org.apache.rocketmq.common.protocol.header.UnregisterClientRequestHeader;
-import org.apache.rocketmq.common.protocol.header.UpdateConsumerOffsetRequestHeader;
-import org.apache.rocketmq.common.protocol.header.UpdateGlobalWhiteAddrsConfigRequestHeader;
-import org.apache.rocketmq.common.protocol.header.ViewBrokerStatsDataRequestHeader;
-import org.apache.rocketmq.common.protocol.header.ViewMessageRequestHeader;
+import org.apache.rocketmq.common.protocol.body.*;
+import org.apache.rocketmq.common.protocol.header.*;
 import org.apache.rocketmq.common.protocol.header.filtersrv.RegisterMessageFilterClassRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.DeleteKVConfigRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.GetKVConfigRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.GetKVConfigResponseHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.GetKVListByNamespaceRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.GetRouteInfoRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.PutKVConfigRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.WipeWritePermOfBrokerRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.WipeWritePermOfBrokerResponseHeader;
+import org.apache.rocketmq.common.protocol.header.namesrv.*;
 import org.apache.rocketmq.common.protocol.heartbeat.HeartbeatData;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
@@ -151,18 +52,18 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.InvokeCallback;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.RemotingClient;
-import org.apache.rocketmq.remoting.exception.RemotingCommandException;
-import org.apache.rocketmq.remoting.exception.RemotingConnectException;
-import org.apache.rocketmq.remoting.exception.RemotingException;
-import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
-import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
-import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
+import org.apache.rocketmq.remoting.exception.*;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.netty.NettyRemotingClient;
 import org.apache.rocketmq.remoting.netty.ResponseFuture;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
+
+import java.io.UnsupportedEncodingException;
+import java.nio.ByteBuffer;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MQClientAPIImpl {
 
@@ -431,6 +332,25 @@ public class MQClientAPIImpl {
         return sendMessage(addr, brokerName, msg, requestHeader, timeoutMillis, communicationMode, null, null, null, 0, context, producer);
     }
 
+    /**
+     * 同步发送接口
+     * @param addr
+     * @param brokerName
+     * @param msg
+     * @param requestHeader
+     * @param timeoutMillis
+     * @param communicationMode
+     * @param sendCallback
+     * @param topicPublishInfo
+     * @param instance
+     * @param retryTimesWhenSendFailed
+     * @param context
+     * @param producer
+     * @return
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public SendResult sendMessage(
         final String addr,
         final String brokerName,
@@ -505,6 +425,23 @@ public class MQClientAPIImpl {
         return this.processSendResponse(brokerName, msg, response,addr);
     }
 
+    /**
+     * 异步发送消息
+     * @param addr
+     * @param brokerName
+     * @param msg
+     * @param timeoutMillis
+     * @param request
+     * @param sendCallback
+     * @param topicPublishInfo
+     * @param instance
+     * @param retryTimesWhenSendFailed
+     * @param times
+     * @param context
+     * @param producer
+     * @throws InterruptedException
+     * @throws RemotingException
+     */
     private void sendMessageAsync(
         final String addr,
         final String brokerName,
@@ -520,6 +457,7 @@ public class MQClientAPIImpl {
         final DefaultMQProducerImpl producer
     ) throws InterruptedException, RemotingException {
         final long beginStartTime = System.currentTimeMillis();
+        //发送消息时注册回调函数,通过回调函数解析返回结果
         this.remotingClient.invokeAsync(addr, request, timeoutMillis, new InvokeCallback() {
             @Override
             public void operationComplete(ResponseFuture responseFuture) {
@@ -711,6 +649,7 @@ public class MQClientAPIImpl {
         final CommunicationMode communicationMode,
         final PullCallback pullCallback
     ) throws RemotingException, MQBrokerException, InterruptedException {
+        //根据请求获取broker处理地址
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.PULL_MESSAGE, requestHeader);
 
         switch (communicationMode) {
@@ -718,6 +657,7 @@ public class MQClientAPIImpl {
                 assert false;
                 return null;
             case ASYNC:
+                //只有异步调用需要回调函数
                 this.pullMessageAsync(addr, request, timeoutMillis, pullCallback);
                 return null;
             case SYNC:
@@ -740,6 +680,7 @@ public class MQClientAPIImpl {
             @Override
             public void operationComplete(ResponseFuture responseFuture) {
                 RemotingCommand response = responseFuture.getResponseCommand();
+                //根据返回结果判断是否调用onSuccess/onException
                 if (response != null) {
                     try {
                         PullResult pullResult = MQClientAPIImpl.this.processPullResponse(response, addr);
@@ -772,6 +713,14 @@ public class MQClientAPIImpl {
         return this.processPullResponse(response, addr);
     }
 
+    /**
+     * 消息拉取客户端处理消息
+     * @param response
+     * @param addr
+     * @return
+     * @throws MQBrokerException
+     * @throws RemotingCommandException
+     */
     private PullResult processPullResponse(
         final RemotingCommand response,
         final String addr) throws MQBrokerException, RemotingCommandException {
@@ -1089,6 +1038,18 @@ public class MQClientAPIImpl {
         return response.getCode() == ResponseCode.SUCCESS;
     }
 
+    /**
+     * 发送ACK响应
+     * @param addr
+     * @param msg
+     * @param consumerGroup
+     * @param delayLevel
+     * @param timeoutMillis
+     * @param maxConsumeRetryTimes
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public void consumerSendMessageBack(
         final String addr,
         final MessageExt msg,
@@ -1097,6 +1058,7 @@ public class MQClientAPIImpl {
         final long timeoutMillis,
         final int maxConsumeRetryTimes
     ) throws RemotingException, MQBrokerException, InterruptedException {
+        //构建ConsumerSendMsgBackRequestHeader
         ConsumerSendMsgBackRequestHeader requestHeader = new ConsumerSendMsgBackRequestHeader();
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.CONSUMER_SEND_MSG_BACK, requestHeader);
 
@@ -1106,7 +1068,7 @@ public class MQClientAPIImpl {
         requestHeader.setDelayLevel(delayLevel);
         requestHeader.setOriginMsgId(msg.getMsgId());
         requestHeader.setMaxReconsumeTimes(maxConsumeRetryTimes);
-
+        //发送消息 -> 服务端处理器SendMessageProcessor#asyncConsumerSendMsgBack
         RemotingCommand response = this.remotingClient.invokeSync(MixAll.brokerVIPChannel(this.clientConfig.isVipChannelEnabled(), addr),
             request, timeoutMillis);
         assert response != null;
