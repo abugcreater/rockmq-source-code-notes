@@ -63,6 +63,9 @@ import org.apache.rocketmq.store.index.QueryOffsetResult;
 import org.apache.rocketmq.store.schedule.ScheduleMessageService;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * 提供对存储文件操作的API
+ */
 public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     /**
@@ -70,7 +73,7 @@ public class DefaultMessageStore implements MessageStore {
      */
     private final MessageStoreConfig messageStoreConfig;
     /**
-     * 文件存储实现类
+     * commitLog文件存储实现类
      */
     private final CommitLog commitLog;
     /**
@@ -78,15 +81,15 @@ public class DefaultMessageStore implements MessageStore {
      */
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
     /**
-     * 消息队列文件 ConsumeQueue
+     * 消息队列文件 ConsumeQueue 刷盘线程
      */
     private final FlushConsumeQueueService flushConsumeQueueService;
     /**
-     * 清除CommitLog服务
+     * 清除CommitLog文件服务
      */
     private final CleanCommitLogService cleanCommitLogService;
     /**
-     * 清除ConsumeQueue服务
+     * 清除ConsumeQueue文件服务
      */
     private final CleanConsumeQueueService cleanConsumeQueueService;
     /**
@@ -99,7 +102,7 @@ public class DefaultMessageStore implements MessageStore {
      */
     private final AllocateMappedFileService allocateMappedFileService;
     /**
-     * CommitLog消息分发,根据CommitLog创建 ConsumeQueue,IndexFile
+     * CommitLog消息分发,根据CommitLog创建 ConsumeQueue,IndexFile文件
      */
     private final ReputMessageService reputMessageService;
     /**
@@ -228,7 +231,7 @@ public class DefaultMessageStore implements MessageStore {
                 result = result && this.scheduleMessageService.load();
             }
 
-            // load Commit Log
+            // load Commit Log,时间调用mappedFileQueue.load()
             result = result && this.commitLog.load();
 
             // load Consume Queue
@@ -397,6 +400,11 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 校验消息主题长度和属性长度是否合法
+     * @param msg
+     * @return
+     */
     private PutMessageStatus checkMessage(MessageExtBrokerInner msg) {
         if (msg.getTopic().length() > Byte.MAX_VALUE) {
             log.warn("putMessage message topic length too long " + msg.getTopic().length());
@@ -517,7 +525,7 @@ public class DefaultMessageStore implements MessageStore {
 
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
-        //检查消息类型
+        //检查消息存放是否合法
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
             return new PutMessageResult(checkStoreStatus, null);
@@ -1446,7 +1454,7 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
-     * 加载消息消费队列
+     * 加载消息消费队列,思路与commitLog一致
      * @return
      */
     private boolean loadConsumeQueue() {
@@ -1537,6 +1545,9 @@ public class DefaultMessageStore implements MessageStore {
         return maxPhysicOffset;
     }
 
+    /**
+     * 恢复对应消费队列的消费偏移量
+     */
     public void recoverTopicQueueTable() {
         HashMap<String/* topic-queueid */, Long/* offset */> table = new HashMap<String, Long>(1024);
         long minPhyOffset = this.commitLog.getMinOffset();
@@ -1677,15 +1688,18 @@ public class DefaultMessageStore implements MessageStore {
     class CleanCommitLogService {
 
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
+        //超过该使用率会拒绝新消息写入,应该立即启动文件删除
         private final double diskSpaceWarningLevelRatio =
             Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceWarningLevelRatio", "0.90"));
-
+        //超过该使用率不会拒绝新消息写入
         private final double diskSpaceCleanForciblyRatio =
             Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceCleanForciblyRatio", "0.85"));
         private long lastRedeleteTimestamp = 0;
 
         private volatile int manualDeleteFileSeveralTimes = 0;
-
+        /**
+         * 是否需要立即删除
+         */
         private volatile boolean cleanImmediately = false;
 
         public void excuteDeleteFilesManualy() {
@@ -1709,13 +1723,13 @@ public class DefaultMessageStore implements MessageStore {
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
             //删除物理文件的间隔,因为一次清除过程中可能需要删除不止一个文件,需要制定两次删除的时间间隔 100
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
-            //第一次拒绝删除后最大的保留时间,超过这个时间会被删除  1000 * 120
+            //第一次拒绝删除后最大的保留时间,超过这个时间会被强制删除  1000 * 120
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
             //默认凌晨4点
             boolean timeup = this.isTimeToDelete();
             //判断磁盘空间是否已满
             boolean spacefull = this.isSpaceToDelete();
-            //是否一次删除多个
+            //预留手工触发
             boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
 
             if (timeup || spacefull || manualDelete) {
@@ -1779,6 +1793,7 @@ public class DefaultMessageStore implements MessageStore {
             cleanImmediately = false;
 
             {
+                //当前磁盘使用率
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(getStorePathPhysic());
                 if (physicRatio > diskSpaceWarningLevelRatio) {
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
@@ -1980,6 +1995,10 @@ public class DefaultMessageStore implements MessageStore {
      */
     class ReputMessageService extends ServiceThread {
 
+        /**
+         * 从哪个物理偏移量开始转发消息,如果允许重复转发则设置为commitlog的提交指针,
+         * 如果不允许重复转发则设置为commitlog的最大偏移量
+         */
         private volatile long reputFromOffset = 0;
 
         public long getReputFromOffset() {
@@ -2038,7 +2057,7 @@ public class DefaultMessageStore implements MessageStore {
                         this.reputFromOffset = result.getStartOffset();
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
-                            //创建DispatchRequest对象
+                            //创建DispatchRequest对象,解析bytebuffer
                             DispatchRequest dispatchRequest =
                                 DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();

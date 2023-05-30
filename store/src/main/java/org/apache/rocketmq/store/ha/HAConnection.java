@@ -313,6 +313,7 @@ public class HAConnection {
                             .getHaSendHeartbeatInterval()) {
 
                             // Build Header
+                            //构建心跳包 长度12 待拉取偏移量 + size
                             this.byteBufferHeader.position(0);
                             this.byteBufferHeader.limit(headerSize);
                             this.byteBufferHeader.putLong(this.nextTransferFromWhere);

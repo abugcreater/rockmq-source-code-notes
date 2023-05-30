@@ -74,6 +74,7 @@ public class MessageStoreConfig {
     // When to delete,default is at 4 am
     @ImportantField
     private String deleteWhen = "04";
+    //磁盘分区的最大使用量
     private int diskMaxUsedSpaceRatio = 75;
     // The number of hours to keep a log file before deleting it (in hours)
     @ImportantField
@@ -138,6 +139,11 @@ public class MessageStoreConfig {
     private long osPageCacheBusyTimeOutMills = 1000;
     private int defaultQueryMaxNum = 32;
 
+    /**
+     * transientStorePoolEnable=true表示内容先存储在堆外内存,
+     * 然后通过commit线程将数据提交到内存映射buffer中,
+     * 在通过flush线程将内存映射buffer中的数据持久化到磁盘中
+     */
     @ImportantField
     private boolean transientStorePoolEnable = false;
     private int transientStorePoolSize = 5;

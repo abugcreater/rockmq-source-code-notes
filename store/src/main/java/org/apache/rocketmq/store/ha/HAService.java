@@ -361,7 +361,7 @@ public class HAService {
     }
 
     /**
-     * HA client端实现类
+     * HA client主从同步salve端实现类
      */
     class HAClient extends ServiceThread {
         /**
@@ -492,7 +492,7 @@ public class HAService {
                 try {
                     int readSize = this.socketChannel.read(this.byteBufferRead);
                     if (readSize > 0) {
-                        //如果读到字节数大于0则重置读到0次数
+                        //如果读到字节数大于0则重置读到0字节的次数
                         readSizeZeroTimes = 0;
                         //转发读请求,将消息追加到内存映射文件中
                         boolean result = this.dispatchReadRequest();

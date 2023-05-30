@@ -30,7 +30,7 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 /**
- * MappedFileQueue是MappedFile的管理容器
+ * MappedFileQueue是MappedFile的管理容器,是对存储目录的封装
  */
 public class MappedFileQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -130,7 +130,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 删除offset后的文件
+     * 删除offset后的所有文件
      * @param offset
      */
     public void truncateDirtyFiles(long offset) {

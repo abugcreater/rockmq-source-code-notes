@@ -40,7 +40,9 @@ public class StoreStatsService extends ServiceThread {
     };
 
     private static int printTPSInterval = 60 * 1;
-
+    /**
+     * 存储消息失败次数
+     */
     private final AtomicLong putMessageFailedTimes = new AtomicLong(0);
 
     private final ConcurrentMap<String, AtomicLong> putMessageTopicTimesTotal =

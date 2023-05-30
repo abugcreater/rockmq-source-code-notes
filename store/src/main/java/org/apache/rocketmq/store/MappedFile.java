@@ -80,10 +80,12 @@ public class MappedFile extends ReferenceResource {
     protected FileChannel fileChannel;
     /**
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
+     * 堆内存ByteBuffer,如果不为空,数据首先要存储到该buffer中,然后提交到mappedFile对应的内存映射文件buffer
      */
     protected ByteBuffer writeBuffer = null;
     /**
-     * 堆内存池transientStorePoolEnable=true时启用
+     * 堆内存池transientStorePoolEnable=true时启用,短暂的存储池,
+     * 缓存mappedByteBuffer,临时存储数据
      */
     protected TransientStorePool transientStorePool = null;
     /**
@@ -190,12 +192,12 @@ public class MappedFile extends ReferenceResource {
     public void init(final String fileName, final int fileSize,
         final TransientStorePool transientStorePool) throws IOException {
         init(fileName, fileSize);
+        //如果transientStorePoolEnable=true初始化writeBuffer
         this.writeBuffer = transientStorePool.borrowBuffer();
         this.transientStorePool = transientStorePool;
     }
 
     private void init(final String fileName, final int fileSize) throws IOException {
-        //初始化时transientStorePoolEnable为true,表示内存先存储到堆外内存,再通过commit线程提交到内存映射的buffer中,再通过flush线程将buffer中数据刷盘
 
         this.fileName = fileName;
         this.fileSize = fileSize;
@@ -257,7 +259,7 @@ public class MappedFile extends ReferenceResource {
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
             byteBuffer.position(currentPos);
             AppendMessageResult result;
-            //区分类型 创建一个于mapfile共享内存区,并设置position为当前指针
+            //区分类型 创建一个于mappedfile共享内存区,并设置position为当前指针
             if (messageExt instanceof MessageExtBrokerInner) {
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBrokerInner) messageExt);
             } else if (messageExt instanceof MessageExtBatch) {
@@ -353,10 +355,15 @@ public class MappedFile extends ReferenceResource {
         return this.getFlushedPosition();
     }
 
+    /**
+     * 执行提交操作
+     * @param commitLeastPages 本次提交最小页数,本次提交数据不满commitLeastPages则不执行
+     * @return
+     */
     public int commit(final int commitLeastPages) {
         if (writeBuffer == null) {
             //no need to commit data to file channel, so just regard wrotePosition as committedPosition.
-            //如果writeBuffer为空直接返回当前写指针的位置,无需提交操作
+            //如果writeBuffer为空直接返回当前写指针的位置,无需提交操作,commit主体是writeBuffer
             return this.wrotePosition.get();
         }
         if (this.isAbleToCommit(commitLeastPages)) {
@@ -382,7 +389,7 @@ public class MappedFile extends ReferenceResource {
     protected void commit0(final int commitLeastPages) {
         int writePos = this.wrotePosition.get();
         int lastCommittedPosition = this.committedPosition.get();
-        //如果脏页大于最小提交页数
+        //如果脏页大于最小提交页数,将writePos到lastCommittedPosition的数据写入到fileChannel
         if (writePos - lastCommittedPosition > commitLeastPages) {
             try {
                 //将数据位置赋值到fileChannel中,commit的作用就是将数据提交到文件通道中
@@ -398,6 +405,11 @@ public class MappedFile extends ReferenceResource {
         }
     }
 
+    /**
+     * 判断是否刷盘和commit逻辑基本相同
+     * @param flushLeastPages
+     * @return
+     */
     private boolean isAbleToFlush(final int flushLeastPages) {
         int flush = this.flushedPosition.get();
         int write = getReadPosition();
@@ -413,15 +425,22 @@ public class MappedFile extends ReferenceResource {
         return write > flush;
     }
 
+
+    /**
+     * 判断是否执行commit操作
+     * @param commitLeastPages
+     * @return
+     */
     protected boolean isAbleToCommit(final int commitLeastPages) {
         int flush = this.committedPosition.get();
         int write = this.wrotePosition.get();
-
+        //文件已满
         if (this.isFull()) {
             return true;
         }
 
         if (commitLeastPages > 0) {
+            //比较当前writebuffer写指针和上一次提交的指针的差值,除以页大小获取脏页数量
             return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) >= commitLeastPages;
         }
         //commitLeastPages小于等于0表示只要存在脏页就立即提交

@@ -27,6 +27,9 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.MappedFile;
 
+/**
+ *专门为消息订阅构件的索引
+ */
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     /**
@@ -41,12 +44,17 @@ public class IndexFile {
      * pre index no:该条目的前一条记录的Index索引,当出现hash冲突时,构件的链表结构
      */
     private static int indexSize = 20;
-    //没有赋值的地方
+    /**
+     * 无效索引 默认为0
+     */
     private static int invalidIndex = 0;
     /**
      * hash槽,一个IndexFile默认包含500w个hash槽,每个hash槽存储的是落在该hash槽的hashcode最新的Index索引
      */
     private final int hashSlotNum;
+    /**
+     * 最大索引数目 默认 2000w
+     */
     private final int indexNum;
     private final MappedFile mappedFile;
     private final FileChannel fileChannel;
@@ -153,7 +161,7 @@ public class IndexFile {
                 this.mappedByteBuffer.putInt(absIndexPos, keyHash);
                 this.mappedByteBuffer.putLong(absIndexPos + 4, phyOffset);
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8, (int) timeDiff);
-                this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue);
+                this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue); //preIndex No上一条索引,当出现hash冲突时构建成链表
                 //将当前Index中包含的条目数量存入hash槽,将覆盖原先的值
                 this.mappedByteBuffer.putInt(absSlotPos, this.indexHeader.getIndexCount());
 

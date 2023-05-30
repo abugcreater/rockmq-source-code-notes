@@ -27,6 +27,10 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
 /**
  * 消息队列文件
+ * 可以看做commitLog关于消息消费的索引文件
+ * 存储条目,默认一个文件存储30万个条目
+ * |commitlog offset(8字节)|size(4字节)|tag hashcode(8字节)|
+ * 消息到达commitlog后由专门现场转发任务构件ConsumeQueue文件和索引文件
  */
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -156,6 +160,11 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据消息存储时间定为offset
+     * @param timestamp
+     * @return
+     */
     public long getOffsetInQueueByTime(final long timestamp) {
         //根据时间戳获取mappedFile
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
@@ -523,7 +532,7 @@ public class ConsumeQueue {
         int mappedFileSize = this.mappedFileSize;
         //index*每条目录长度获取offset值,offset是consumeQueue中的物理偏移量
         long offset = startIndex * CQ_STORE_UNIT_SIZE;
-        //如果offset大于minLogicOffset说明消息已经被消除
+        //如果offset小于minLogicOffset说明消息已经被删除
         if (offset >= this.getMinLogicOffset()) {
             //根据offset值获取物理文件中的相关信息,定位物理文件
             MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);

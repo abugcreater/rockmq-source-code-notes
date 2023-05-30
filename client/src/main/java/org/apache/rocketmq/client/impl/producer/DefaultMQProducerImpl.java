@@ -1266,7 +1266,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
         //校验消息体结构
         Validators.checkMessage(msg, this.defaultMQProducer);
-        //设置事务相关属性,目的是事务消息本地事务状态时,随机选择一个消息生产者即可
+        //设置事务相关属性是prepare消息,设置生产组的目的是事务消息本地事务状态时,随机选择一个消息生产者即可
         SendResult sendResult = null;
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_TRANSACTION_PREPARED, "true");
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_PRODUCER_GROUP, this.defaultMQProducer.getProducerGroup());
@@ -1296,7 +1296,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         localTransactionState = localTransactionExecuter.executeLocalTransactionBranch(msg, arg);
                     } else if (transactionListener != null) {
                         log.debug("Used new transaction API");
-                        //事务监听器处理本地事务消息
+                        //事务监听器处理本地事务消息,记录事务消息本地事务状态
                         localTransactionState = transactionListener.executeLocalTransaction(msg, arg);
                     }
                     if (null == localTransactionState) {

@@ -65,7 +65,7 @@ public class IndexService {
                 try {
                     IndexFile f = new IndexFile(file.getPath(), this.hashSlotNum, this.indexNum, 0, 0);
                     f.load();
-
+                    //如果上次异常退出,且索引文件的刷盘时间小于该索引文件的最大消息时间戳,则立即销毁
                     if (!lastExitOK) {
                         if (f.getEndTimestamp() > this.defaultMessageStore.getStoreCheckpoint()
                             .getIndexMsgTimestamp()) {
@@ -223,7 +223,7 @@ public class IndexService {
             }
             //如果唯一键不为空
             if (req.getUniqKey() != null) {
-                //将该key添加到消息索引中,一遍加速根据唯一键检索消息
+                //将该key添加到消息索引中,以便加速根据唯一键检索消息
                 indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));
                 if (indexFile == null) {
                     log.error("putKey error commitlog {} uniqkey {}", req.getCommitLogOffset(), req.getUniqKey());
@@ -232,7 +232,7 @@ public class IndexService {
             }
 
             if (keys != null && keys.length() > 0) {
-                //多个索引用空格分隔
+                //构件索引,支持为一个消息建立多个索引,多个索引用空格分隔
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
                 for (int i = 0; i < keyset.length; i++) {
                     String key = keyset[i];

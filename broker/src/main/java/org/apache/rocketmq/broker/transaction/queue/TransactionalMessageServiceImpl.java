@@ -166,8 +166,8 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
                 List<Long> doneOpOffset = new ArrayList<>();
                 HashMap<Long, Long> removeMap = new HashMap<>();
-                //根据当前的处理进度,一次从已处理队列中拉取32条消息,方便判断这批消息是否被处理过,避免重复发送事务回调请求
-                //涉及:RMQ_SYS_TRANS_OP_HALF_TOPIC,RMQ_SYS_TRANS_OP_HALF_TOPIC 主题
+                //fillOpRemoveMap根据当前的处理进度,一次从已处理队列中拉取32条消息,方便判断这批消息是否被处理过,避免重复发送事务回调请求
+                //涉及:RMQ_SYS_TRANS_HALF_TOPIC prepare消息主题,RMQ_SYS_TRANS_OP_HALF_TOPIC 收到消息提交或回滚时消息会存储到该主题下
                 PullResult pullResult = fillOpRemoveMap(removeMap, opQueue, opOffset, halfOffset, doneOpOffset);
                 if (null == pullResult) {
                     log.error("The queue={} check msgOffset={} with opOffset={} failed, pullResult is null",
@@ -197,7 +197,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                         GetResult getResult = getHalfMsg(messageQueue, i);
                         MessageExt msgExt = getResult.getMsg();
                         if (msgExt == null) {
-                            //超过空消息限制则退出
+                            //超过重试次数限制则退出
                             if (getMessageNullCount++ > MAX_RETRY_COUNT_WHEN_HALF_NULL) {
                                 break;
                             }
